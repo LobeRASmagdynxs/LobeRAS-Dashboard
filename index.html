@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LobeRAS — Game Fixtures & Market-Odds</title>
+<style>
+:root{color-scheme:light;--ink:#111;--paper:#fff;--line:#c9c9c9;--soft:#f4f4f4;--green:#087f23;--red:#b00020}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Arial,sans-serif}
+header{border-bottom:2px solid var(--ink);padding:18px 24px;display:flex;justify-content:space-between;gap:20px;align-items:center}
+h1{font-size:21px;margin:0}main{padding:20px 24px;max-width:1500px;margin:auto}
+.panel{border:1px solid var(--ink);padding:16px;margin-bottom:18px}.hidden{display:none}
+label{display:block;font-weight:700;margin-bottom:5px}input{border:1px solid var(--ink);padding:10px;width:min(390px,100%);margin:0 8px 8px 0}
+button{background:#111;color:#fff;border:1px solid #111;padding:10px 15px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5}.status{font-weight:700}.success{color:var(--green)}.error{color:var(--red)}
+.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.summary{display:flex;gap:20px;flex-wrap:wrap}.summary span{border-left:3px solid #111;padding-left:8px}
+.table-wrap{overflow:auto;border:1px solid var(--ink)}table{border-collapse:collapse;width:100%;min-width:1160px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:var(--ink);color:#fff;position:sticky;top:0}tr:nth-child(even) td{background:var(--soft)}
+.odd-zero{color:var(--red);font-weight:700}.odd-positive{color:var(--green);font-weight:700}
+small{color:#555}.identifier{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+</style>
+</head>
+<body>
+<header><h1>LobeRAS — Game Fixtures & Bet Placement</h1><div class="status" id="sessionStatus">Authentication required</div></header>
+<main>
+<section class="panel" id="loginPanel">
+<h2>Owner/Operator access</h2>
+<div id="emailStep">
+<label for="email">Approved email address</label>
+<input id="email" type="email" value="magdynxs@gmail.com" autocomplete="email">
+<button id="requestCode">Send one-time code</button>
+</div>
+<div id="codeStep" class="hidden">
+<label for="code">One-time code received by email</label>
+<input id="code" inputmode="numeric" autocomplete="one-time-code">
+<button id="verifyCode">Open Dashboard</button>
+</div>
+<p id="loginMessage"></p>
+</section>
+<section id="dashboard" class="hidden">
+<div class="toolbar">
+<div class="summary">
+<span><strong id="fixtureCount">0</strong><br>Game Fixtures</span>
+<span><strong id="marketCount">0</strong><br>Markets</span>
+<span><strong id="oddCount">0</strong><br>Market-Odds</span>
+</div>
+<div><button id="refresh">Refresh current Market-Odds</button> <button id="signOut">Sign out</button></div>
+</div>
+<p><strong>Latest database refresh:</strong> <span id="updated">—</span><br><small>Verified Betfair data only. No Operational Engine calculations, Stakes, Batches or bets are produced on this screen.</small></p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Date & Time</th><th>Game Fixture</th><th>Game Status</th><th>Market Selection</th><th>Market-Odd Selection</th><th>Current Odd</th><th>Available Amount</th><th>Data</th><th>Internal Identifier</th></tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+</section>
+</main>
+<script>
+const apiBase="https://gesajkzhhpzczlflsacc.supabase.co/functions/v1/loberas-dashboard";
+const state={email:"magdynxs@gmail.com",token:sessionStorage.getItem("loberas_access_token")||""};
+const $=id=>document.getElementById(id);
+function message(text,error=false){$("loginMessage").textContent=text;$("loginMessage").className=error?"error":"success"}
+async function post(path,body,token=""){const r=await fetch(apiBase+path,{method:"POST",headers:{"content-type":"application/json",...(token?{authorization:"Bearer "+token}:{})},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Request failed");return data}
+$("requestCode").onclick=async()=>{try{state.email=$("email").value.trim().toLowerCase();$("requestCode").disabled=true;await post("/auth/request",{email:state.email});$("codeStep").classList.remove("hidden");message("One-time code sent. Check the approved email account.")}catch(e){message(e.message,true)}finally{$("requestCode").disabled=false}};
+$("verifyCode").onclick=async()=>{try{$("verifyCode").disabled=true;const data=await post("/auth/verify",{email:state.email,token:$("code").value.trim()});state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);await loadData()}catch(e){message(e.message,true)}finally{$("verifyCode").disabled=false}};
+$("refresh").onclick=loadData;
+$("signOut").onclick=()=>{sessionStorage.removeItem("loberas_access_token");state.token="";location.reload()};
+async function loadData(){try{$("refresh").disabled=true;const from=new Date(Date.now()-2*60*60*1000).toISOString();const to=new Date(Date.now()+48*60*60*1000).toISOString();const r=await fetch(apiBase+"/api/current-data?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to)+"&limit=5000",{headers:{authorization:"Bearer "+state.token}});const data=await r.json();if(!r.ok)throw new Error(data.error||"Unable to load Dashboard");$("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("sessionStatus").textContent="OWNER/OPERATOR";$("sessionStatus").className="status success";render(data.rows);$("updated").textContent=new Date(data.generatedAt).toLocaleString()}catch(e){sessionStorage.removeItem("loberas_access_token");state.token="";$("loginPanel").classList.remove("hidden");$("dashboard").classList.add("hidden");message(e.message,true)}finally{$("refresh").disabled=false}}
+function render(rows){$("oddCount").textContent=rows.length;$("fixtureCount").textContent=new Set(rows.map(r=>r.internal_fixture_id)).size;$("marketCount").textContent=new Set(rows.map(r=>r.internal_market_id)).size;$("rows").replaceChildren(...rows.map(r=>{const tr=document.createElement("tr");const odd=Number(r.current_odd);const values=[new Date(r.scheduled_at).toLocaleString(),r.home_team+" v "+r.away_team,r.game_status,r.market_selection,r.market_odd_selection,{text:odd.toFixed(2),className:odd>0?"odd-positive":"odd-zero"},r.available_amount,r.market_data_delayed?"1.0-DELAY":"LIVE",{text:r.internal_market_odd_id,className:"identifier"}];for(const value of values){const td=document.createElement("td");if(typeof value==="object"){td.textContent=value.text;td.className=value.className}else td.textContent=value??"—";tr.appendChild(td)}return tr}))}
+if(state.token)loadData();
+</script>
+</body>
+</html>
