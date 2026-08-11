@@ -19,7 +19,7 @@ button:disabled{opacity:.5}.status{font-weight:700}.success{color:var(--green)}.
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 th{background:var(--ink);color:#fff;position:sticky;top:0}tr:nth-child(even) td{background:var(--soft)}
 .odd-zero{color:var(--red);font-weight:700}.odd-positive{color:var(--green);font-weight:700}
-small{color:#555}.identifier{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+small{color:#555}.identifier{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}.calculation-panel{border:2px solid #111;padding:14px;margin-top:18px}.calculation-note{background:var(--soft);border-left:4px solid #111;padding:10px;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -46,19 +46,21 @@ small{color:#555}.identifier{font-family:ui-monospace,SFMono-Regular,Menlo,monos
 <span><strong id="marketCount">0</strong><br>Markets</span>
 <span><strong id="oddCount">0</strong><br>Market-Odds</span>
 </div>
-<div><button id="refresh">Refresh current Market-Odds</button> <button id="signOut">Sign out</button></div>
+<div><button id="refresh">Refresh current Market-Odds</button> <button id="calculate">Calculate Operational Engines</button> <button id="signOut">Sign out</button></div>
 </div>
-<p><strong>Latest database refresh:</strong> <span id="updated">—</span><br><small>Verified Betfair data only. No Operational Engine calculations, Stakes, Batches or bets are produced on this screen.</small></p>
+<p><strong>Latest database refresh:</strong> <span id="updated">—</span><br><small>Verified Betfair data. Calculation-only: no Batches or bets are submitted.</small></p>
 <div class="table-wrap">
 <table>
 <thead><tr><th>Date & Time</th><th>Game Fixture</th><th>Game Status</th><th>Market Selection</th><th>Market-Odd Selection</th><th>Current Odd</th><th>Available Amount</th><th>Data</th><th>Internal Identifier</th></tr></thead>
 <tbody id="rows"></tbody>
 </table>
 </div>
+<section id="calculationPanel" class="calculation-panel hidden"><h2>Operational Engine Calculation Preview</h2><div id="calculationNote" class="calculation-note"></div><div class="table-wrap"><table><thead><tr><th>Operational Engine ID</th><th>Point Slot</th><th>Game Status</th><th>Market Selection</th><th>Market-Odd Selection</th><th>Selected Odd</th><th>Recovery Balance</th><th>Stake</th><th>Calculation Status</th></tr></thead><tbody id="calculationRows"></tbody></table></div></section>
 </section>
 </main>
 <script>
 const apiBase="https://gesajkzhhpzczlflsacc.supabase.co/functions/v1/loberas-dashboard";
+const calculationApiBase="https://gesajkzhhpzczlflsacc.supabase.co/functions/v1/loberas-calculation-preview";
 const state={email:"magdynxs@gmail.com",token:sessionStorage.getItem("loberas_access_token")||""};
 const $=id=>document.getElementById(id);
 function message(text,error=false){$("loginMessage").textContent=text;$("loginMessage").className=error?"error":"success"}
@@ -66,8 +68,10 @@ async function post(path,body,token=""){const r=await fetch(apiBase+path,{method
 $("requestCode").onclick=async()=>{try{state.email=$("email").value.trim().toLowerCase();$("requestCode").disabled=true;await post("/auth/request",{email:state.email});$("codeStep").classList.remove("hidden");message("Sign-in email sent. Paste its numerical code or copy and paste the complete sign-in link below.")}catch(e){message(e.message,true)}finally{$("requestCode").disabled=false}};
 $("verifyCode").onclick=async()=>{try{$("verifyCode").disabled=true;const entered=$("code").value.trim();let verification={email:state.email,token:entered};if(/^https?:\/\//i.test(entered)){const link=new URL(entered);const tokenHash=link.searchParams.get("token")||link.searchParams.get("token_hash");if(!tokenHash)throw new Error("The pasted email link is invalid.");verification={email:state.email,tokenHash}}const data=await post("/auth/verify",verification);state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);await loadData()}catch(e){message(e.message,true)}finally{$("verifyCode").disabled=false}};
 $("refresh").onclick=loadData;
+$("calculate").onclick=loadCalculations;
 $("signOut").onclick=()=>{sessionStorage.removeItem("loberas_access_token");state.token="";location.reload()};
 async function loadData(){try{$("refresh").disabled=true;const from=new Date(Date.now()-2*60*60*1000).toISOString();const to=new Date(Date.now()+48*60*60*1000).toISOString();const r=await fetch(apiBase+"/api/current-data?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to)+"&limit=5000",{headers:{authorization:"Bearer "+state.token}});const data=await r.json();if(!r.ok)throw new Error(data.error||"Unable to load Dashboard");$("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("sessionStatus").textContent="OWNER/OPERATOR";$("sessionStatus").className="status success";render(data.rows);$("updated").textContent=new Date(data.generatedAt).toLocaleString()}catch(e){sessionStorage.removeItem("loberas_access_token");state.token="";$("loginPanel").classList.remove("hidden");$("dashboard").classList.add("hidden");message(e.message,true)}finally{$("refresh").disabled=false}}
+async function loadCalculations(){try{$("calculate").disabled=true;$("calculate").textContent="Calculating…";const from=new Date(Date.now()-2*60*60*1000).toISOString();const to=new Date(Date.now()+48*60*60*1000).toISOString();const r=await fetch(calculationApiBase+"?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to),{headers:{authorization:"Bearer "+state.token}});const data=await r.json();if(!r.ok)throw new Error(data.error||"Unable to calculate Operational Engines");const rows=data.calculations.flatMap(c=>c.stakes.map(s=>({...c,...s})));$("calculationNote").textContent=data.calculations.length+" Operational Engine calculations · "+rows.length+" calculated Stakes · Investment Deposit €"+Number(data.investmentDeposit).toFixed(2)+" · Base Stake €"+Number(data.baseStake).toFixed(2)+" · 0 Batches · 0 Stakes submitted";$("calculationRows").replaceChildren(...rows.map(r=>{const tr=document.createElement("tr");const values=[r.operationalEngineId,r.pointSlot,r.gameStatus,r.marketSelection,r.marketOddSelection,Number(r.selectedOdd).toFixed(2),"€"+Number(r.recoveryBalance).toFixed(2),{text:"€"+Number(r.Stake).toFixed(2),className:"odd-positive"},r.calculationStatus];for(const value of values){const td=document.createElement("td");if(typeof value==="object"){td.textContent=value.text;td.className=value.className}else td.textContent=value??"—";tr.appendChild(td)}return tr}));$("calculationPanel").classList.remove("hidden");$("calculationPanel").scrollIntoView({behavior:"smooth"})}catch(e){message(e.message,true)}finally{$("calculate").disabled=false;$("calculate").textContent="Calculate Operational Engines"}}
 function render(rows){$("oddCount").textContent=rows.length;$("fixtureCount").textContent=new Set(rows.map(r=>r.internal_fixture_id)).size;$("marketCount").textContent=new Set(rows.map(r=>r.internal_market_id)).size;$("rows").replaceChildren(...rows.map(r=>{const tr=document.createElement("tr");const odd=Number(r.current_odd);const values=[new Date(r.scheduled_at).toLocaleString(),r.home_team+" v "+r.away_team,r.game_status,r.market_selection,r.market_odd_selection,{text:odd.toFixed(2),className:odd>0?"odd-positive":"odd-zero"},r.available_amount,r.market_data_delayed?"1.0-DELAY":"LIVE",{text:r.internal_market_odd_id,className:"identifier"}];for(const value of values){const td=document.createElement("td");if(typeof value==="object"){td.textContent=value.text;td.className=value.className}else td.textContent=value??"—";tr.appendChild(td)}return tr}))}
 if(state.token)loadData();
 </script>
