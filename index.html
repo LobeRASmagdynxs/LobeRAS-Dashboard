@@ -33,8 +33,8 @@ small{color:#555}.identifier{font-family:ui-monospace,SFMono-Regular,Menlo,monos
 <button id="requestCode">Send one-time code</button>
 </div>
 <div id="codeStep" class="hidden">
-<label for="code">One-time code received by email</label>
-<input id="code" inputmode="numeric" autocomplete="one-time-code">
+<label for="code">One-time code or complete sign-in link received by email</label>
+<input id="code" autocomplete="one-time-code" placeholder="Paste the code or complete email link">
 <button id="verifyCode">Open Dashboard</button>
 </div>
 <p id="loginMessage"></p>
@@ -63,8 +63,8 @@ const state={email:"magdynxs@gmail.com",token:sessionStorage.getItem("loberas_ac
 const $=id=>document.getElementById(id);
 function message(text,error=false){$("loginMessage").textContent=text;$("loginMessage").className=error?"error":"success"}
 async function post(path,body,token=""){const r=await fetch(apiBase+path,{method:"POST",headers:{"content-type":"application/json",...(token?{authorization:"Bearer "+token}:{})},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Request failed");return data}
-$("requestCode").onclick=async()=>{try{state.email=$("email").value.trim().toLowerCase();$("requestCode").disabled=true;await post("/auth/request",{email:state.email});$("codeStep").classList.remove("hidden");message("One-time code sent. Check the approved email account.")}catch(e){message(e.message,true)}finally{$("requestCode").disabled=false}};
-$("verifyCode").onclick=async()=>{try{$("verifyCode").disabled=true;const data=await post("/auth/verify",{email:state.email,token:$("code").value.trim()});state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);await loadData()}catch(e){message(e.message,true)}finally{$("verifyCode").disabled=false}};
+$("requestCode").onclick=async()=>{try{state.email=$("email").value.trim().toLowerCase();$("requestCode").disabled=true;await post("/auth/request",{email:state.email});$("codeStep").classList.remove("hidden");message("Sign-in email sent. Paste its numerical code or copy and paste the complete sign-in link below.")}catch(e){message(e.message,true)}finally{$("requestCode").disabled=false}};
+$("verifyCode").onclick=async()=>{try{$("verifyCode").disabled=true;const entered=$("code").value.trim();let verification={email:state.email,token:entered};if(/^https?:\/\//i.test(entered)){const link=new URL(entered);const tokenHash=link.searchParams.get("token")||link.searchParams.get("token_hash");if(!tokenHash)throw new Error("The pasted email link is invalid.");verification={email:state.email,tokenHash}}const data=await post("/auth/verify",verification);state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);await loadData()}catch(e){message(e.message,true)}finally{$("verifyCode").disabled=false}};
 $("refresh").onclick=loadData;
 $("signOut").onclick=()=>{sessionStorage.removeItem("loberas_access_token");state.token="";location.reload()};
 async function loadData(){try{$("refresh").disabled=true;const from=new Date(Date.now()-2*60*60*1000).toISOString();const to=new Date(Date.now()+48*60*60*1000).toISOString();const r=await fetch(apiBase+"/api/current-data?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to)+"&limit=5000",{headers:{authorization:"Bearer "+state.token}});const data=await r.json();if(!r.ok)throw new Error(data.error||"Unable to load Dashboard");$("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("sessionStatus").textContent="OWNER/OPERATOR";$("sessionStatus").className="status success";render(data.rows);$("updated").textContent=new Date(data.generatedAt).toLocaleString()}catch(e){sessionStorage.removeItem("loberas_access_token");state.token="";$("loginPanel").classList.remove("hidden");$("dashboard").classList.add("hidden");message(e.message,true)}finally{$("refresh").disabled=false}}
