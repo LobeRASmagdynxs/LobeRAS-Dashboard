@@ -20,7 +20,16 @@ button{margin-top:16px;background:#111;color:#fff;border:1px solid #111;padding:
 <header><h1>LobeRAS — Secure Dashboard</h1><div class="status" id="sessionStatus">AUTHENTICATION REQUIRED</div></header>
 <main><section class="panel">
 <h2>Approved user access</h2>
-<p class="note">Owner/Operator and approved Developer access. Each user receives a separate one-time code.</p>
+<p class="note">Owner/Operator access for both approved accounts.</p>
+<div id="passwordStep">
+<label for="passwordEmail">Approved email address</label>
+<input id="passwordEmail" type="email" autocomplete="email" placeholder="Enter your approved email address">
+<label for="password">Password</label>
+<input id="password" type="password" autocomplete="current-password" placeholder="Enter your password">
+<button id="passwordLogin" type="button">OPEN DASHBOARD</button>
+</div>
+<hr>
+<p class="note">Email verification is used only to establish or recover a password.</p>
 <div id="emailStep">
 <label for="email">Approved email address</label>
 <input id="email" type="email" autocomplete="email" placeholder="Enter your approved email address">
@@ -31,6 +40,11 @@ button{margin-top:16px;background:#111;color:#fff;border:1px solid #111;padding:
 <input id="code" autocomplete="one-time-code" placeholder="Enter the code or paste the complete email link">
 <button id="verifyCode" type="button">OPEN DASHBOARD</button>
 </div>
+<div id="setPasswordStep" class="hidden">
+<label for="newPassword">Create or change password</label>
+<input id="newPassword" type="password" autocomplete="new-password" minlength="12" placeholder="At least 12 characters">
+<button id="setPassword" type="button">SAVE PASSWORD</button>
+</div>
 <p id="message" aria-live="polite"></p>
 </section></main>
 <script>
@@ -38,11 +52,13 @@ const apiBase="https://gesajkzhhpzczlflsacc.supabase.co/functions/v1/loberas-das
 const state={email:"",token:sessionStorage.getItem("loberas_access_token")||""};
 const $=id=>document.getElementById(id);
 function showMessage(text,error=false){$("message").textContent=text;$("message").className=error?"error":"success"}
-async function post(path,body){const r=await fetch(apiBase+path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Request failed");return data}
+async function post(path,body,token=""){const r=await fetch(apiBase+path,{method:"POST",headers:{"content-type":"application/json",...(token?{authorization:"Bearer "+token}:{})},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Request failed");return data}
 async function openDashboard(){const r=await fetch(apiBase+"/api/reconciled-ui",{headers:{authorization:"Bearer "+state.token}});if(!r.ok)throw new Error("DASHBOARD_ACCESS_NOT_AUTHORIZED");const html=await r.text();document.open();document.write(html);document.close()}
 $("requestCode").onclick=async()=>{try{state.email=$("email").value.trim().toLowerCase();if(!state.email)throw new Error("APPROVED_EMAIL_REQUIRED");$("requestCode").disabled=true;await post("/auth/request",{email:state.email});$("codeStep").classList.remove("hidden");showMessage("One-time code sent to the approved email address.")}catch(e){showMessage(e.message,true)}finally{$("requestCode").disabled=false}};
-$("verifyCode").onclick=async()=>{try{$("verifyCode").disabled=true;const entered=$("code").value.trim();let verification={email:state.email,token:entered};if(/^https?:\/\//i.test(entered)){const link=new URL(entered);const tokenHash=link.searchParams.get("token")||link.searchParams.get("token_hash");if(!tokenHash)throw new Error("INVALID_SIGN_IN_LINK");verification={email:state.email,tokenHash}}const data=await post("/auth/verify",verification);state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);await openDashboard()}catch(e){sessionStorage.removeItem("loberas_access_token");state.token="";showMessage(e.message,true)}finally{$("verifyCode").disabled=false}};
-if(state.token)openDashboard().catch(()=>{sessionStorage.removeItem("loberas_access_token");state.token=""});
+$("passwordLogin").onclick=async()=>{try{$("passwordLogin").disabled=true;state.email=$("passwordEmail").value.trim().toLowerCase();const data=await post("/auth/password",{email:state.email,password:$("password").value});state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);await openDashboard()}catch(e){showMessage(e.message,true)}finally{$("passwordLogin").disabled=false}};
+$("verifyCode").onclick=async()=>{try{$("verifyCode").disabled=true;const entered=$("code").value.trim();let verification={email:state.email,token:entered};if(/^https?:\/\//i.test(entered)){const link=new URL(entered);const tokenHash=link.searchParams.get("token")||link.searchParams.get("token_hash");if(!tokenHash)throw new Error("INVALID_SIGN_IN_LINK");verification={email:state.email,tokenHash}}const data=await post("/auth/verify",verification);state.token=data.access_token;sessionStorage.setItem("loberas_access_token",state.token);$("setPasswordStep").classList.remove("hidden");showMessage("Identity verified. Create your password.")}catch(e){sessionStorage.removeItem("loberas_access_token");state.token="";showMessage(e.message,true)}finally{$("verifyCode").disabled=false}};
+$("setPassword").onclick=async()=>{try{$("setPassword").disabled=true;await post("/auth/set-password",{password:$("newPassword").value},state.token);showMessage("Password saved. Opening Dashboard.");await openDashboard()}catch(e){showMessage(e.message,true)}finally{$("setPassword").disabled=false}};
+if(state.token){$("setPasswordStep").classList.remove("hidden");showMessage("Authenticated session found. Create a password or open the Dashboard with your existing session.")}
 </script>
 </body>
 </html>
